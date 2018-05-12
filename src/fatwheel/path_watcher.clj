@@ -2,7 +2,8 @@
   "https://docs.oracle.com/javase/tutorial/essential/io/examples/WatchDir.java"
   (:import (java.nio.file FileSystems Paths StandardWatchEventKinds Path WatchService Files
                           SimpleFileVisitor FileVisitResult WatchKey WatchEvent LinkOption)
-           (java.util HashMap)))
+           (java.util HashMap Vector)
+           (java.util.concurrent LinkedBlockingQueue)))
 
 (def kinds
   {StandardWatchEventKinds/ENTRY_CREATE :create
@@ -91,3 +92,40 @@
     (spit "testfile2" "hahahaha")
     (spit "testfile" "hehehehe")
     (Thread/sleep 100))
+
+(defn debounce [debounce-t ^LinkedBlockingQueue event-queue t events]
+  (Thread/sleep t)
+  (let [recent-events (doto (Vector.) (->> (.drainTo event-queue)))
+        accumulated-events (reduce conj events recent-events)
+        [t] (last accumulated-events)
+        elapsed (max 0 (- (System/currentTimeMillis) t))
+        remaining-t (- debounce-t elapsed)]
+    (if (<= remaining-t 0)
+      accumulated-events
+      (recur debounce-t event-queue remaining-t accumulated-events))))
+
+(def conjs (fnil conj #{}))
+
+(defn summarize [events]
+  (reduce (fn [acc [t kind path]]
+            (update acc (str path) conjs kind))
+          {}
+          events))
+
+(defn watch-dirs [dirs init f debounce-t]
+  (let [event-queue (LinkedBlockingQueue.)]
+    (println "Watching the filesystem:" (pr-str dirs))
+    (with-open [w (make-watcher dirs (fn handle-event [kind path]
+                                       (.put event-queue [(System/currentTimeMillis) kind path])))]
+      (init dirs)
+      (loop []
+        (let [event (.take event-queue)
+              events (debounce debounce-t event-queue debounce-t [event])
+              events-summary (summarize events)]
+          (prn 'EVENTS events-summary)
+          (try
+            (f events-summary)
+            (catch Exception ex
+              (println "Exception in toolchain")
+              (println ex)))
+          (recur))))))

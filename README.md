@@ -37,6 +37,7 @@ Edit your source code, when you save it the code is reloaded, tests are run, fol
   - in normal console use file:///... or similar?
 * Make the console only show one actionable thing at a time (maybe have navigation keys)
 * Minimize the amount of work done by diffing
+* Reload libraries from deps.edn
 
 
 ## Contributing
