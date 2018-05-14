@@ -1,0 +1,33 @@
+.hidden {display: none !important;}
+.token.operator {background: none;}
+.subtle {color: #aaa; font-weight: normal;}
+.sidebar {height: 300px; overflow-y: scroll;}
+.frame_info {height: 291px;}
+pre[class*="language-"] {margin-top: 0; background: #fff; padding-bottom: 1.75em; padding-left: 1em;}
+.code_linenums {padding-top: 11px;}
+.line-highlight {background: rgba(220, 30, 30, 0.1); -webkit-animation: highlight 400ms linear 1; -moz-animation: highlight 400ms linear 1; animation: highlight 400ms linear 1;}
+.line-numbers-rows {visibility: hidden;}
+
+.code {border-top-left-radius: 0;}
+
+.map-path a {color: #28b;}
+
+.caused-by {float: right;}
+.caused-by a {color: #99f;}
+
+.source-failure {
+    background: #f1f1f1;
+    border: 1px solid #ccc;
+    border-top: none;
+    color: #666;
+    height: 29px;
+    line-height: 30px;
+    vertical-align: middle;
+    overflow: hidden;
+    padding: 110px 10px;
+    text-align: center;
+}
+header.exception:hover h2 {padding-right: 0;}
+.sub-heading {margin: 20px 0 0;}
+.line-error {background: #FBC2C4 !important;
+             color: #8a1f11 !important;}

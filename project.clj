@@ -23,6 +23,7 @@
                  [integrant "0.6.3"]
                  [jonase/eastwood "0.2.6" :exclusions [org.clojure/clojure]]
                  [jonase/kibit "0.1.6"]
+                 [prone "1.5.2"]
                  [rewrite-clj "0.6.0"]
                  [ring "1.6.3"]
                  [ring/ring-defaults "0.3.1"]]
@@ -37,7 +38,8 @@
   {:dev
    {:env {:dev? true}
     :plugins [[lein-figwheel "0.5.16"]]
-    :figwheel {}
+    :figwheel {:css-dirs ["resources/public/css"]}
+
     :cljsbuild {:builds {:app {:figwheel {:websocket-host "localhost"
                                           :on-jsload "fatwheel.client.main/mount-root"}
                                :compiler {:optimizations :none

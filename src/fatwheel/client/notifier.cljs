@@ -35,9 +35,11 @@
                (first only-in-b))]
     (notify title body)))
 
+(defn app-state-changed [k r a b]
+  (prn "Updated" (:title (:load-error b) (str "NO TITLE" (:message (:error (:load-error b))))))
+  (summarize (:server-state a) (:server-state b)))
+
 (defn init [app-state]
   (notify "Fatwheel started" "Watching for changes...")
-  (add-watch app-state :notifier-watch-app-state
-             (fn [k r a b]
-               (prn "SUP" a b)
-               (summarize (:server-state a) (:server-state b)))))
+  (add-watch app-state :notifier-watch-app-state app-state-changed))
+

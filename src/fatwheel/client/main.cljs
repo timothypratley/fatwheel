@@ -5,12 +5,16 @@
             [fatwheel.client.view :as view]
             [reagent.core :as reagent]))
 
-(defonce app-state (reagent/atom {}))
-
-(defn init []
-  (view/mount-root app-state)
+(defn init [app-state]
   (routes/init)
   (communication/init app-state)
   (notifier/init app-state))
 
-(init)
+(defonce app-state
+  (doto (reagent/atom {})
+    (init)))
+
+(defn mount-root []
+  (view/mount-root app-state))
+
+(mount-root)

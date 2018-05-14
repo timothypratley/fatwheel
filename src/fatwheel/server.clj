@@ -7,13 +7,6 @@
             [taoensso.sente :as sente]
             [taoensso.sente.server-adapters.http-kit :refer (get-sch-adapter)]))
 
-(defn login-handler
-  [req]
-  (let [{:keys [session params]} req
-        {:keys [user-id]} params]
-    (println "Login request: " params)
-    {:status 200 :session (assoc session :uid user-id)}))
-
 (defn ws-routes [{:keys [ajax-post-fn ajax-get-or-ws-handshake-fn]}]
   (routes
     (GET "/" req (response/redirect "/index.html"))
@@ -27,14 +20,8 @@
   ;; https://github.com/ring-clojure/ring-defaults/issues/23
   (wrap-defaults app-routes (dissoc site-defaults :static)))
 
-;; TODO: move to another ns? connect with integrant?
-(defmulti -event-msg-handler :id)
-
-;; TODO: Wraps `-event-msg-handler` with logging, error catching, etc.
-(defn event-msg-handler [{:as ev-msg :keys [id ?data event]}]
-  (-event-msg-handler ev-msg))
-
-(defn start [opts]
+(defn start [event-msg-handler opts]
+  {:pre [(fn? event-msg-handler)]}
   (println "Starting server...")
   (let [ws (sente/make-channel-socket! (get-sch-adapter) {})
         r (ws-routes ws)
@@ -51,22 +38,10 @@
 
 (defn ws-send [{:keys [send-fn connected-uids]} msg]
   (doseq [uid (:any @connected-uids)]
-    (send-fn uid [:fatwheel/app-state msg])))
+    (send-fn uid msg)))
 
 (defn ch-recv [{:keys [ch-recv]}]
   (ch-recv))
 
 (defn connected-uids [{:keys [connected-uids]}]
   connected-uids)
-
-
-;; TODO: send initial state on connect
-
-
-(defmethod -event-msg-handler :default
-  [{:as ev-msg :keys [event id ?data ring-req ?reply-fn send-fn]}]
-  (let [session (:session ring-req)
-        uid (:uid session)]
-    (println "Unhandled event:" event)
-    (when ?reply-fn
-      (?reply-fn {:umatched-event-as-echoed-from-from-server event}))))

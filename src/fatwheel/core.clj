@@ -9,33 +9,72 @@
             [integrant.core :as ig]
             [kibit.driver :as k]
             [rewrite-clj.parser :as p]
-            [rewrite-clj.node :as n]))
+            [rewrite-clj.node :as n]
+            [prone.stacks :as stacks]
+            [prone.middleware :as pm]
+            [prone.prep :as prep]
+            [clojure.string :as str]
+            [clojure.java.io :as io]))
 
+;; TODO: in theory Integrant allows users to configure their toolchain
 (def config
-  {:adapter/server {:port 8080}
-   :app/state {:server (ig/ref :adapter/server)}
+  {:app/state {}
+   :websocket/message-handler {:app-state (ig/ref :app/state)}
+   ;; TODO: separate http-kit server from websocket server (handler&sente)
+   :http/server {:opts {:port 8080}
+                 :message-handler (ig/ref :websocket/message-handler)}
+   :websocket/notifier {:server (ig/ref :http/server)
+                        :app-state (ig/ref :app/state)}
    #_#_#_#_:file/watcher {}
-   :toolchain [:lint
-               :kibit]})
+       :toolchain [:lint
+                   :kibit]})
+
+(defmethod ig/init-key :app/state [_ _]
+  (atom {}))
+
+(defmethod ig/init-key :websocket/message-handler [_ {:keys [app-state]}]
+  (fn event-msg-handler [{:keys [id event ?data ring-req ?reply-fn send-fn]}]
+    (let [uid (:uid (:session ring-req))]
+      (condp = id
+        :fatwheel/hello
+        (do
+          (println "Sending initial state:" (keys @app-state))
+          ;; TODO: omg why??? WHY??? Oh the inhumanity
+          (send-fn (or uid :sente/all-users-without-uid)
+                   [:fatwheel/app-state @app-state]))
+
+        ;; This doesn't raise when reconnecting, which is kinda annoying
+        :chsk/uidport-open
+        (println "New connection:" uid)
+
+        :chsk/uidport-close
+        (println "Disconnected:" uid)
+
+        :chsk/ws-ping
+        nil
+
+        (do
+          (println "Unhandled event:" event)
+          (when ?reply-fn
+            (?reply-fn {:umatched-event-as-echoed-from-from-server event})))))))
 
 
-(defmethod ig/init-key :adapter/server [_ opts]
-  (server/start opts))
+(defmethod ig/init-key :http/server [_ {:keys [opts message-handler]}]
+  (server/start message-handler opts))
 
-(defmethod ig/halt-key! :adapter/server [_ this]
+(defmethod ig/halt-key! :http/server [_ this]
+  ;; TODO: is this really this???
   (server/stop this))
 
-(defmethod ig/init-key :toolchain/refresh [_])
+(defmethod ig/init-key :websocket/notifier [_ {:keys [server app-state]}]
+  (add-watch app-state
+    :app-state-watch
+    (fn app-state-changed [k r a b]
+      (println "Sending update:" (:keys b))
+      (server/ws-send server [:fatwheel/app-state b]))))
 
-(defmethod ig/init-key :app/state [_ {:keys [server]}]
-  (doto (atom {})
-    (add-watch
-      :app-state-watch
-      (fn app-state-changed [k r a b]
-        (prn "SENDING" b)
-        (server/ws-send server b)))))
-
-(defmethod ig/halt-key! :app/state [_ this]
+(defmethod ig/halt-key! :websocket/notifier [_ this]
+  ;; TODO: is this really this???
   (remove-watch this :app-state-watch))
 
 (defonce program-namespaces (atom {}))
@@ -86,17 +125,49 @@
     (println kibit))
   :ok)
 
+(defn parse-int [s]
+  (try
+    (Integer/parseInt s)
+    (catch Exception ex
+      0)))
+
 (defn toolchain [app-state report-fn events-summary]
   (swap! app-state assoc :status :reloading)
   (apply nsr/set-refresh-dirs (src-dirs))
   (let [r (nsr/refresh)] ;; :after `post-refresh-toolchain)]
     (if (not= :ok r)
       (do
-        (swap! app-state assoc :load-error (pr-str r))
+        ;; TODO: scope capture
+        (swap! app-state assoc :load-error
+               ;; TODO: get-application-name relies on lein, instead just look in the src dir?
+               (let [e
+                     (with-redefs [stacks/add-frame-from-message
+                                   (fn [ex]
+                                     ;; TODO: merge upstream to prone
+                                     (if-let [data (and (:message ex)
+                                                        (re-find #"\(([^(]+.cljc?):(\d+):(\d+)\)" (:message ex)))]
+                                       (let [[_ path line column] data]
+                                         (if (io/resource path)
+                                           (update-in ex [:frames]
+                                                      #(conj % {:lang :clj
+                                                                :package (#'stacks/file-name-to-namespace path)
+                                                                :method-name nil
+                                                                :loaded-from nil
+                                                                :class-path-url path
+                                                                :file-name (re-find #"[^/]+.cljc?" path)
+                                                                :line-number (Integer. line)
+                                                                :column (Integer. column)}))
+                                           ex))
+                                       ex))]
+                       ;; TODO: shorten exception type
+                       (#'prep/prep-error (stacks/normalize-exception r) [(#'pm/get-application-name)]))]
+                 {:title (:message e)
+                  :error e
+                  :src-loc-selection :application}))
         (println "OH NO:" r))
       (do
+        ;; TODO: want to report during post-refresh-toolchain, but vars are gone
         (swap! app-state dissoc :load-error)
-        ;; TODO: want to report during post-refresh-toolchain
         (post-refresh-toolchain app-state)))
     (swap! app-state assoc :status :waiting)
     (println "Toolchain complete, waiting for changes...")))
@@ -104,12 +175,13 @@
 (defn -main [& args]
   (println "Fatwheel starting...")
   (nsr/disable-unload! *ns*)
-  (let [{:keys [adapter/server app/state :as system]} (ig/init config)
+  (let [{:keys [http/server app/state :as system]} (ig/init config)
         ;; TODO: better
-        report-fn #(server/ws-send server %)]
-    (pw/watch-dirs (src-dirs) init (fn [event-summary]
-                                     (toolchain state report-fn event-summary))
-                   10)
+        report-fn (fn report-fn [x]
+                    (server/ws-send server [:fatwheel/app-state x]))
+        on-change (fn on-file-change [event-summary]
+                    (toolchain state report-fn event-summary))]
+    (pw/watch-dirs (src-dirs) on-change on-change 10)
     (println "Exiting...")
     (ig/halt! system))
   (shutdown-agents))
