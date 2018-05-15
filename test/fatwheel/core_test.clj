@@ -4,4 +4,4 @@
 
 (deftest a-test
   (testing "Intentionally failing to demonstrate behavior (TODO: remove me later)."
-    (is (= 0 1))))
+    (is (= 1 1))))

@@ -5,6 +5,9 @@
             [clojure.tools.namespace.repl :as nsr]
             [clojure.tools.namespace.dir :as dir]
             [eastwood.lint :as e]
+            [eftest.runner :as runner]
+            [eftest.report.pretty :as pretty]
+            [eftest.report.progress :as progress]
             [fatwheel.path-watcher :as pw]
             [integrant.core :as ig]
             [kibit.driver :as k]
@@ -16,7 +19,6 @@
             [clojure.string :as str]
             [clojure.java.io :as io]))
 
-;; TODO: in theory Integrant allows users to configure their toolchain
 (def config
   {:app/state {}
    :websocket/message-handler {:app-state (ig/ref :app/state)}
@@ -25,6 +27,7 @@
                  :message-handler (ig/ref :websocket/message-handler)}
    :websocket/notifier {:server (ig/ref :http/server)
                         :app-state (ig/ref :app/state)}
+   ;; TODO: in theory Integrant allows users to configure their toolchain
    #_#_#_#_:file/watcher {}
        :toolchain [:lint
                    :kibit]})
@@ -108,21 +111,33 @@
 ;; TODO: only run downstream tools on the parts that changed
 (defn post-refresh-toolchain [app-state]
   (swap! app-state assoc :status :running-tests)
-  (let [summary (test/run-all-tests)]
-    ;;(swap! app-state assoc :test-summary summary)
-    (if (test/successful? summary)
-      (println "AWESOME!")
-      (println "BOOO")))
-  (swap! app-state assoc :status :linting)
-  (let [lint (e/lint {})]
-    (swap! app-state assoc :lint lint)
-    (println lint))
-  ;;(println (e/eastwood {}))
-  ;; TODO: (dirs) does too much! (finds clojurescript intermediary files)
-  (swap! app-state assoc :status :kibiting)
-  (let [kibit (k/run ["src"] nil)]
-    (swap! app-state assoc :kibit kibit)
-    (println kibit))
+  ;; TODO: track tests more precisely
+  (let [summary (runner/run-tests (runner/find-tests "test")
+                                  {:fail-fast? true
+                                   :report (fn test-report [{:keys [type] :as m}]
+                                             (when (#{:fail :error} type)
+                                               (swap! app-state assoc-in [:test type] m))
+                                             (progress/report m))})
+        #_(test/run-all-tests)]
+    (swap! app-state assoc-in [:test :summary] summary)
+    (if (not (test/successful? summary))
+      (println "BOOO")
+      (do
+        (println "AWESOME!")
+        (swap! app-state (fn [x]
+                           (-> x
+                               (update :test dissoc :fail :error)
+                               (assoc :status :linting))))
+        (let [lint (e/lint {})]
+          (swap! app-state assoc :lint lint)
+          (println lint))
+        ;;(println (e/eastwood {}))
+        ;; TODO: (dirs) does too much! (finds clojurescript intermediary files)
+        ;; TODO: should kibit be chained?
+        (swap! app-state assoc :status :kibiting)
+        (let [kibit (k/run ["src"] nil)]
+          (swap! app-state assoc :kibit kibit)
+          (println kibit)))))
   :ok)
 
 (defn parse-int [s]

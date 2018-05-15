@@ -19,6 +19,7 @@
                  ;; Clojure deps
                  [org.clojure/tools.namespace "0.2.11"]
                  [compojure "1.6.1"]
+                 [eftest "0.5.2"]
                  [http-kit "2.3.0"]
                  [integrant "0.6.3"]
                  [jonase/eastwood "0.2.6" :exclusions [org.clojure/clojure]]

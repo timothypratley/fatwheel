@@ -38,11 +38,19 @@ Edit your source code, when you save it the code is reloaded, tests are run, fol
 * Make the console only show one actionable thing at a time (maybe have navigation keys)
 * Minimize the amount of work done by diffing
 * Reload libraries from deps.edn
+* Pause
+* Pull the source code of function under test
+* Need to cancel toolchain on new activity... Trio style?
+* Improve the notifier summary messages
 
 
 ## Contributing
 
-Pull requests welcome.
+Pull requests are welcome.
+
+Please raise an issue if you experience problems with Fatwheel,
+or have feature idea to suggest.
+
 
 
 ## License

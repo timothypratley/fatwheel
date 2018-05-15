@@ -1,12 +1,14 @@
 (ns fatwheel.unrelated)
 
+;; Creating errors here for testing
+
 (prn "asdaasdsadffsd")
 
 (defn foo []
   {:booz :foo})
 
-;; {:baz}
+;;{:baz}
 
-#_bad
+;;bad
 
-#_(/ 1 0)
+;;(/ 1 0)
